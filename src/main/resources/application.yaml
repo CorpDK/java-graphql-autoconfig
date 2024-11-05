@@ -1,0 +1,67 @@
+spring:
+  application:
+    name: entity-first
+  graphql:
+    cors:
+      allow-credentials: true
+      allowed-methods:
+        - GET
+        - POST
+        - OPTIONS
+      allowed-origins:
+        - "http://localhost:4200"
+        - "https://studio.apollographql.com"
+    graphiql:
+      enabled: true  # Enable GraphiQL for easy testing
+#      path: /graphiql
+    path: /graphql  # GraphQL endpoint path (default is /graphql)
+    schema:
+      printer:
+        enabled: true
+      inspection:
+        enabled: true
+      introspection:
+        enabled: true
+      auto-generate: true  # Enable schema generation based on entities
+  datasource:
+    url: jdbc:h2:~/test/testdb
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: password
+  h2:
+    console:
+      enabled: true  # Enable H2 database console for testing
+  jpa:
+    hibernate:
+      ddl-auto: update # Automatically create/update tables
+    show-sql: true  # Show SQL queries in the console
+application:
+  entity:
+    package: "com.corpdk.graphql.demo.entity_first.models"
+    filters: "com.corpdk.graphql.demo.entity_first.filters"
+
+logging:
+  level:
+#    root: TRACE
+#    org.apache: ERROR
+#    org.hibernate: INFO
+#    com.zaxxer.hikari: INFO
+#    javax.management: INFO
+#    org.aspectj: INFO
+    com.corpdk.graphql.demo.entity_first.autoconfigurator.ConfigureFetchers: TRACE
+#    org.springframework.beans.factory.support: INFO
+#    org.springframework.web: INFO
+#    org.springframework.beans: INFO
+#    org.springframework.cloud : INFO
+#    org.springframework.context: INFO
+#    org.springframework.boot.context.config: INFO
+#    org.springframework.boot.actuate: INFO
+#    org.springframework.boot.web: INFO
+#    org.springframework.boot.autoconfigure: INFO
+#    org.springframework.boot.autoconfigure.graphql: INFO
+#    org.springframework.core: INFO
+#    org.springframework.graphql: TRACE
+#    org.springframework.graphql.server: INFO
+#    org.springframework.data: TRACE
+#    org.springframework.data.repository.config.RepositoryComponentProvider: DEBUG
+#    org.springframework.data.repository.config.RepositoryConfigurationDelegate: INFO

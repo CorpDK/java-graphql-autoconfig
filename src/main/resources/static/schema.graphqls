@@ -1,0 +1,23 @@
+# Query operations with filter input
+#type Query {
+#    employee(id: ID): Employee
+##    employee(id: ID, unique: EmployeeUniqueInput): Employee
+#
+#    department(id: ID): Department
+##    department(id: ID, unique: DepartmentUniqueInput): Department
+#}
+
+# Mutation operations
+#type Mutation {
+#    employee(name: String!, departmentId: ID!): Employee
+#    updateEmployee(id: ID!, name: String, departmentId: ID): Employee
+#    deleteEmployee(id: ID!): Boolean
+#
+#    createDepartment(name: String!): Department
+#    updateDepartment(id: ID!, name: String): Department
+#    deleteDepartment(id: ID!): Boolean
+#
+#    createProject(projectName: String!, employeeId: ID!): Project
+#    updateProject(id: ID!, projectName: String, employeeId: ID): Project
+#    deleteProject(id: ID!): Boolean
+#}

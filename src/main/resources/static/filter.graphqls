@@ -1,0 +1,4 @@
+#extend type Query {
+#    project(id: ID): Project
+#    #    project(id: ID, unique: ProjectUniqueInput): Project
+#}
