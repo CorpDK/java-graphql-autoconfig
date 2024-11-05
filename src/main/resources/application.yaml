@@ -24,7 +24,7 @@ spring:
         enabled: true
       auto-generate: true  # Enable schema generation based on entities
   datasource:
-    url: jdbc:h2:~/test/testdb
+    url: jdbc:h2:file:./testdb
     driver-class-name: org.h2.Driver
     username: sa
     password: password
@@ -48,7 +48,7 @@ logging:
 #    com.zaxxer.hikari: INFO
 #    javax.management: INFO
 #    org.aspectj: INFO
-    com.corpdk.graphql.demo.entity_first.autoconfigurator.ConfigureFetchers: TRACE
+#    com.corpdk.graphql.demo.entity_first.autoconfigurator.ConfigureFetchers: TRACE
 #    org.springframework.beans.factory.support: INFO
 #    org.springframework.web: INFO
 #    org.springframework.beans: INFO
