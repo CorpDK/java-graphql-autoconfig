@@ -7,6 +7,8 @@ import graphql.schema.SelectedField;
 import graphql.schema.idl.TypeDefinitionRegistry;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
+import jakarta.persistence.criteria.Path;
+import jakarta.persistence.criteria.Root;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.jetbrains.annotations.NotNull;
@@ -262,5 +264,17 @@ public class Helpers {
         public Iterator<SelectedField> iterator() {
             return this.selectedFields.iterator();
         }
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    public static <T> Path<T> getPath(Root root, String pathString) {
+        String[] segments = pathString.split("\\.");
+        Path<?> path = root;
+
+        for (String segment : segments) {
+            path = path.get(segment);
+        }
+
+        return (Path<T>) path;
     }
 }

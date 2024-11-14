@@ -1,9 +1,13 @@
 package com.corpdk.graphql.demo.entity_first.autoconfigurator.fetchers;
 
 import com.corpdk.graphql.demo.entity_first.autoconfigurator.ConfigureFetchers;
+import com.corpdk.graphql.demo.entity_first.autoconfigurator.filters.BaseFilter;
+import com.corpdk.graphql.demo.entity_first.autoconfigurator.specifications.SpecificationGenerator;
 import graphql.schema.DataFetcher;
 import graphql.schema.DataFetchingEnvironment;
-import graphql.schema.GraphQLArgument;
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.ConstraintViolationException;
+import jakarta.validation.Validator;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.jetbrains.annotations.Contract;
@@ -39,6 +43,7 @@ import java.lang.reflect.Type;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
@@ -48,14 +53,19 @@ import static com.corpdk.graphql.demo.entity_first.autoconfigurator.Helpers.requ
 public abstract class JpaSpecificationDataFetcher<T> {
     private static final Log logger = LogFactory.getLog(JpaSpecificationDataFetcher.class);
 
+    private final String filtersBasePackage;
 
     private final TypeInformation<T> domainType;
 
     private final GraphQlArgumentBinder argumentBinder;
 
-    JpaSpecificationDataFetcher(TypeInformation<T> domainType) {
+    private final Validator validator;
+
+    JpaSpecificationDataFetcher(TypeInformation<T> domainType, String filtersBasePackage, Validator validator) {
         this.domainType = domainType;
         this.argumentBinder = new GraphQlArgumentBinder();
+        this.filtersBasePackage = filtersBasePackage;
+        this.validator = validator;
     }
 
     @Nullable
@@ -101,13 +111,13 @@ public abstract class JpaSpecificationDataFetcher<T> {
     }
 
     public static @NotNull RuntimeWiringConfigurer autoRegistrationConfigurer(
-            @NotNull List<JpaSpecificationExecutor<?>> executors) {
+            String filtersBasePackage, Validator validator, @NotNull List<JpaSpecificationExecutor<?>> executors) {
         logger.info("No of Executors: " + executors.size());
-        return autoRegistrationConfigurer(executors, null, null);
+        return autoRegistrationConfigurer(filtersBasePackage, validator, executors, null, null);
     }
 
     public static @NotNull RuntimeWiringConfigurer autoRegistrationConfigurer(
-            @NotNull List<JpaSpecificationExecutor<?>> executors,
+            String filtersBasePackage, Validator validator, @NotNull List<JpaSpecificationExecutor<?>> executors,
             @Nullable CursorStrategy<ScrollPosition> cursorStrategy,
             @Nullable ScrollSubrange defaultScrollSubrange) {
 
@@ -117,6 +127,8 @@ public abstract class JpaSpecificationDataFetcher<T> {
             String typeName = getGraphQlTypeName(executor);
             if (typeName != null) {
                 Builder<?, ?> builder = customize(executor, builder(executor)
+                        .filtersBasePackage(filtersBasePackage)
+                        .validator(validator)
                         .cursorStrategy(cursorStrategy)
                         .defaultScrollSubRange(20, next -> {
                             AtomicReference<ScrollPosition> scrollPosition = new AtomicReference<>();
@@ -166,19 +178,6 @@ public abstract class JpaSpecificationDataFetcher<T> {
         return builder;
     }
 
-    @Nullable
-    private static String getArgumentName(@NotNull DataFetchingEnvironment environment) {
-        Map<String, Object> arguments = environment.getArguments();
-        List<GraphQLArgument> definedArguments = environment.getFieldDefinition().getArguments();
-        if (definedArguments.size() == 1) {
-            String name = definedArguments.getFirst().getName();
-            if (arguments.get(name) instanceof Map<?, ?>) {
-                return name;
-            }
-        }
-        return null;
-    }
-
     public String getDescription() {
         return "JpaSpecificationDataFetcher<" + this.domainType.getType().getName() + ">";
     }
@@ -188,17 +187,31 @@ public abstract class JpaSpecificationDataFetcher<T> {
         return getDescription();
     }
 
-    public Specification<T> createSpecificationFromFilter(@NotNull DataFetchingEnvironment environment) throws BindException {
+    public Specification<T> createSpecificationFromFilter(@NotNull DataFetchingEnvironment environment) throws BindException, ClassNotFoundException, IllegalAccessException {
         logger.info("Input Query: " + environment.getDocument());
-        String name = getArgumentName(environment);
-        logger.info("Argument Name: " + name);
-        ResolvableType targetType = ResolvableType.forClass(domainType.getType());
-        Object bind = this.argumentBinder.bind(environment, name, targetType);
+        if (!environment.containsArgument("filter")) {
+            return (root, query, criteriaBuilder) -> criteriaBuilder.conjunction();
+        }
+        logger.info("Filters Base Package: " + filtersBasePackage);
+        ResolvableType targetType = ResolvableType.forClass(Class.forName(this.filtersBasePackage + "." + domainType.getType().getSimpleName() + "Filter"));
+        Object bind = this.argumentBinder.bind(environment, "filter", targetType);
         Assert.notNull(bind, "bind must not be null");
         Class<?> clazz = bind.getClass();
-        logger.info(clazz.getSimpleName());
-        logger.info(bind.toString());
-        return (root, query, criteriaBuilder) -> criteriaBuilder.conjunction();
+        logger.trace(clazz.getSimpleName());
+        logger.trace(bind.toString());
+        Set<ConstraintViolation<Object>> violations = validator.validate(bind);
+        violations.forEach(violation -> logger.error("Violation: " + violation));
+        if (!violations.isEmpty()) {
+            throw new ConstraintViolationException(violations);
+        }
+
+        if (bind instanceof BaseFilter<?> baseFilter) {
+            Specification<T> specification = SpecificationGenerator.buildSpecification(baseFilter);
+            logger.debug("Specification Created: " + specification);
+            return specification;
+        } else {
+            return (root, query, criteriaBuilder) -> criteriaBuilder.conjunction();
+        }
     }
 
     public interface JpaSpecificationBuilderCustomizer<T, R extends T> {
@@ -215,6 +228,8 @@ public abstract class JpaSpecificationDataFetcher<T> {
 
         private final Class<R> resultType;
 
+        private final String filtersBasePackage;
+
         @Nullable
         private final CursorStrategy<ScrollPosition> cursorStrategy;
 
@@ -226,60 +241,75 @@ public abstract class JpaSpecificationDataFetcher<T> {
 
         private final Sort sort;
 
+        private final Validator validator;
+
         @SuppressWarnings("unchecked")
         Builder(JpaSpecificationExecutor<T> executor, Class<R> domainType) {
-            this(executor, TypeInformation.of((Class<T>) domainType), domainType, null, null, null, Sort.unsorted());
+            this(executor, TypeInformation.of((Class<T>) domainType), domainType, null, null, null, null, null, Sort.unsorted());
         }
 
-        Builder(JpaSpecificationExecutor<T> executor, TypeInformation<T> domainType, Class<R> resultType,
+        Builder(JpaSpecificationExecutor<T> executor, TypeInformation<T> domainType, Class<R> resultType, String filtersBasePackage, Validator validator,
                 @Nullable CursorStrategy<ScrollPosition> cursorStrategy,
                 @Nullable Integer defaultScrollCount, @Nullable Function<Boolean, ScrollPosition> defaultScrollPosition,
                 Sort sort) {
-            logger.debug("Data Fetcher Builder Default Scroll Position: " + defaultScrollPosition);
+            this.filtersBasePackage = filtersBasePackage;
+            this.validator = validator;
             this.executor = executor;
             this.domainType = domainType;
             this.resultType = resultType;
             this.cursorStrategy = cursorStrategy;
             this.defaultScrollCount = defaultScrollCount;
+            logger.debug("Data Fetcher Builder Default Scroll Position: " + defaultScrollPosition);
             this.defaultScrollPosition = defaultScrollPosition;
             this.sort = sort;
         }
 
         public <P> Builder<T, P> projectAs(Class<P> projectionType) {
             Assert.notNull(projectionType, "Projection type must not be null");
-            return new Builder<>(this.executor, this.domainType, projectionType,
+            return new Builder<>(this.executor, this.domainType, projectionType, this.filtersBasePackage, this.validator,
                     this.cursorStrategy, this.defaultScrollCount, this.defaultScrollPosition, this.sort);
         }
 
         public Builder<T, R> cursorStrategy(@Nullable CursorStrategy<ScrollPosition> cursorStrategy) {
-            return new Builder<>(this.executor, this.domainType, this.resultType,
+            return new Builder<>(this.executor, this.domainType, this.resultType, this.filtersBasePackage, this.validator,
                     cursorStrategy, this.defaultScrollCount, this.defaultScrollPosition, this.sort);
         }
 
         public Builder<T, R> defaultScrollSubRange(
                 int defaultCount, Function<Boolean, ScrollPosition> defaultPosition) {
-
             return new Builder<>(this.executor, this.domainType,
-                    this.resultType, this.cursorStrategy, defaultCount, defaultPosition, this.sort);
+                    this.resultType, this.filtersBasePackage, this.validator, this.cursorStrategy, defaultCount, defaultPosition, this.sort);
         }
 
         public Builder<T, R> sortBy(Sort sort) {
             Assert.notNull(sort, "Sort must not be null");
-            return new Builder<>(this.executor, this.domainType, this.resultType,
+            return new Builder<>(this.executor, this.domainType, this.resultType, this.filtersBasePackage, this.validator,
+                    this.cursorStrategy, this.defaultScrollCount, this.defaultScrollPosition, sort);
+        }
+
+        public Builder<T, R> filtersBasePackage(String filtersBasePackage) {
+            Assert.notNull(filtersBasePackage, "filtersBasePackage must not be null");
+            return new Builder<>(this.executor, this.domainType, this.resultType, filtersBasePackage, this.validator,
+                    this.cursorStrategy, this.defaultScrollCount, this.defaultScrollPosition, sort);
+        }
+
+        public Builder<T, R> validator(Validator validator) {
+            Assert.notNull(filtersBasePackage, "filtersBasePackage must not be null");
+            return new Builder<>(this.executor, this.domainType, this.resultType, this.filtersBasePackage, validator,
                     this.cursorStrategy, this.defaultScrollCount, this.defaultScrollPosition, sort);
         }
 
         public DataFetcher<R> single() {
-            return new FilterSingleEntityDataFetcher<>(this.executor, this.domainType, this.resultType, this.sort);
+            return new FilterSingleEntityDataFetcher<>(this.filtersBasePackage, this.validator, this.executor, this.domainType, this.resultType, this.sort);
         }
 
         public DataFetcher<Iterable<R>> many() {
-            return new FilterManyEntityDataFetcher<>(this.executor, this.domainType, this.resultType, this.sort);
+            return new FilterManyEntityDataFetcher<>(this.filtersBasePackage, this.validator, this.executor, this.domainType, this.resultType, this.sort);
         }
 
         public DataFetcher<Iterable<R>> scrollable() {
             logger.debug("Scrollable Data Fetcher Builder Default Scroll Position: " + this.defaultScrollPosition);
-            return new FilterScrollableEntityDataFetcher<>(
+            return new FilterScrollableEntityDataFetcher<>(this.filtersBasePackage, this.validator,
                     this.executor, this.domainType, this.resultType,
                     (this.cursorStrategy != null) ? this.cursorStrategy : CursorStrategy.withEncoder(new ScrollPositionCursorStrategy(), CursorEncoder.base64()),
                     (this.defaultScrollCount != null) ? this.defaultScrollCount : 20,
@@ -288,9 +318,8 @@ public abstract class JpaSpecificationDataFetcher<T> {
         }
 
         public DataFetcher<Long> count() {
-            return new FilterCountDataFetcher<>(this.executor, this.domainType);
+            return new FilterCountDataFetcher<>(this.filtersBasePackage, this.validator, this.executor, this.domainType);
         }
-
     }
 
     public static class FilterSingleEntityDataFetcher<T, R> extends JpaSpecificationDataFetcher<T> implements SelfDescribingDataFetcher<R> {
@@ -303,9 +332,9 @@ public abstract class JpaSpecificationDataFetcher<T> {
 
         private final Sort sort;
 
-        public FilterSingleEntityDataFetcher(
-                JpaSpecificationExecutor<T> executor, TypeInformation<T> domainType, Class<R> resultType, Sort sort) {
-            super(domainType);
+        public FilterSingleEntityDataFetcher(String filtersBasePackage, Validator validator,
+                                             JpaSpecificationExecutor<T> executor, TypeInformation<T> domainType, Class<R> resultType, Sort sort) {
+            super(domainType, filtersBasePackage, validator);
             this.domainType = domainType;
             this.executor = executor;
             this.resultType = resultType;
@@ -355,9 +384,9 @@ public abstract class JpaSpecificationDataFetcher<T> {
 
         private final Sort sort;
 
-        public FilterManyEntityDataFetcher(
-                JpaSpecificationExecutor<T> executor, TypeInformation<T> domainType, Class<R> resultType, Sort sort) {
-            super(domainType);
+        public FilterManyEntityDataFetcher(String filtersBasePackage, Validator validator,
+                                           JpaSpecificationExecutor<T> executor, TypeInformation<T> domainType, Class<R> resultType, Sort sort) {
+            super(domainType, filtersBasePackage, validator);
             this.domainType = domainType;
             this.resultType = resultType;
             this.executor = executor;
@@ -411,12 +440,12 @@ public abstract class JpaSpecificationDataFetcher<T> {
 
         private final ResolvableType scrollableResultType;
 
-        public FilterScrollableEntityDataFetcher(
-                JpaSpecificationExecutor<T> executor, TypeInformation<T> domainType, Class<R> resultType, CursorStrategy<ScrollPosition> cursorStrategy,
-                int defaultCount,
-                Function<Boolean, ScrollPosition> defaultPosition,
-                Sort sort) {
-            super(executor, domainType, resultType, sort);
+        public FilterScrollableEntityDataFetcher(String filtersBasePackage, Validator validator,
+                                                 JpaSpecificationExecutor<T> executor, TypeInformation<T> domainType, Class<R> resultType, CursorStrategy<ScrollPosition> cursorStrategy,
+                                                 int defaultCount,
+                                                 Function<Boolean, ScrollPosition> defaultPosition,
+                                                 Sort sort) {
+            super(filtersBasePackage, validator, executor, domainType, resultType, sort);
 
             Assert.notNull(cursorStrategy, "CursorStrategy is required");
             Assert.notNull(defaultPosition, "'defaultPosition' is required");
@@ -460,9 +489,9 @@ public abstract class JpaSpecificationDataFetcher<T> {
 
         private final TypeInformation<T> domainType;
 
-        public FilterCountDataFetcher(
-                JpaSpecificationExecutor<T> executor, TypeInformation<T> domainType) {
-            super(domainType);
+        public FilterCountDataFetcher(String filtersBasePackage, Validator validator,
+                                      JpaSpecificationExecutor<T> executor, TypeInformation<T> domainType) {
+            super(domainType, filtersBasePackage, validator);
             this.domainType = domainType;
             this.executor = executor;
         }

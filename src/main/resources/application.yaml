@@ -34,14 +34,21 @@ spring:
   jpa:
     hibernate:
       ddl-auto: update # Automatically create/update tables
-    show-sql: true  # Show SQL queries in the console
+
 application:
   entity:
     package: "com.corpdk.graphql.demo.entity_first.models"
     filters: "com.corpdk.graphql.demo.entity_first.filters"
 
-logging:
-  level:
+#logging:
+#  level:
+#    org.hibernate: TRACE
+#    org.hibernate.engine.jdbc.internal: ERROR
+#    org.hibernate.resource.jdbc.internal: ERROR
+#    org.hibernate.orm.results.loading: ERROR
+#    org.hibernate.orm.jdbc.bind: TRACE # to see the bound parameters
+#    org.hibernate.type.descriptor.sql: TRACE
+#    org.hibernate.type.descriptor: TRACE
 #    root: TRACE
 #    org.apache: ERROR
 #    org.hibernate: INFO

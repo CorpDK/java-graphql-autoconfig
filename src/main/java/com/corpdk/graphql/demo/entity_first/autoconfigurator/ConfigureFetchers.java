@@ -77,7 +77,7 @@ public class ConfigureFetchers implements RuntimeWiringConfigurer {
             }
 
             String outputTypeName = getOutputTypeName(environment);
-            logger.info("Output Type: " + outputTypeName);
+            logger.debug("Output Type: " + outputTypeName);
 
             boolean result = (outputTypeName != null &&
                     ConfigureFetchers.this.dataFetcherFactories.containsKey(outputTypeName) &&
@@ -109,7 +109,7 @@ public class ConfigureFetchers implements RuntimeWiringConfigurer {
                 String fieldName = environment.getFieldDefinition().getName();
                 if (outputTypeName.equals("Int") && fieldName.startsWith("count")) {
                     String parentTypeName = fieldName.substring(5, fieldName.length() - 1);
-                    logger.info("Is Count Field of: " + parentTypeName);
+                    logger.debug("Is Count Field of: " + parentTypeName);
                     return parentTypeName;
                 } else {
                     return outputTypeName;
@@ -161,9 +161,12 @@ public class ConfigureFetchers implements RuntimeWiringConfigurer {
             } else if (environment.getFieldDefinition().getName().startsWith("count")) {
                 logTraceMessage(environment, "Int", true);
                 return factory.count();
+            } else if (type instanceof GraphQLList) {
+                logTraceMessage(environment, outputTypeName, true);
+                return factory.many();
             } else {
                 logTraceMessage(environment, outputTypeName, true);
-                return (type instanceof GraphQLList) ? factory.many() : factory.single();
+                return factory.single();
             }
         }
     }

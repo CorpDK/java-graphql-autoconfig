@@ -1,11 +1,11 @@
 # Query operations with filter input
-#type Query {
-#    employee(id: ID): Employee
+type Query {
+    employee(id: ID): Employee
 ##    employee(id: ID, unique: EmployeeUniqueInput): Employee
 #
 #    department(id: ID): Department
 ##    department(id: ID, unique: DepartmentUniqueInput): Department
-#}
+}
 
 # Mutation operations
 #type Mutation {
