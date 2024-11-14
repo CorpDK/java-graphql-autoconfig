@@ -17,10 +17,6 @@ public class SpecificationBuilder<E> {
         this.field = field;
     }
 
-    public SpecificationBuilder(Specification<E> resultSpec) {
-        this.specification = resultSpec;
-    }
-
     public SpecificationBuilder<E> and(Specification<E> spec) {
         logger.debug("Adding clause 'and' for Field: " + field);
         if (spec != null) {

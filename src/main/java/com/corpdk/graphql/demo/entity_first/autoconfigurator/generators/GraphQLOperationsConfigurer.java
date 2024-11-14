@@ -7,8 +7,10 @@ import org.apache.commons.logging.LogFactory;
 import org.jetbrains.annotations.NotNull;
 import org.springframework.graphql.execution.TypeDefinitionConfigurer;
 
-import java.lang.reflect.ParameterizedType;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import static com.corpdk.graphql.demo.entity_first.autoconfigurator.Helpers.*;

@@ -31,8 +31,8 @@ public class SpecificationGenerator {
         for (Field field : filter.getClass().getDeclaredFields()) {
             logger.debug("Iterating Field: " + field.getName());
 
-            Method getterMethod = null;
-            Object fieldValue = null;
+            Method getterMethod;
+            Object fieldValue;
             try {
                 String getterName = "get" + capitalize(field.getName());
                 getterMethod = filter.getClass().getMethod(getterName);
